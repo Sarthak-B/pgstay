@@ -32,7 +32,7 @@ export default function Header() {
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <Home className="w-5 h-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">PGSpot</span>
+              <span className="text-xl font-bold text-foreground">PGStay</span>
             </Link>
 
             {/* Desktop Navigation */}

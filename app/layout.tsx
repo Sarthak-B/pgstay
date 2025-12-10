@@ -8,7 +8,7 @@ import { AuthProvider } from "@/components/auth-context";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "PGSpot - Find Your Perfect Student Home",
+  title: "PGStay - Find Your Perfect Student Home",
   description: "Verified PGs and hostels for students",
 };
 

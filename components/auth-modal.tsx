@@ -117,7 +117,7 @@ export default function AuthModal() {
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="text-center mb-6">
                 <h2 className="text-xl font-bold text-foreground">Welcome Back</h2>
-                <p className="text-sm text-muted-foreground mt-1">Sign in to your PGSpot account</p>
+                <p className="text-sm text-muted-foreground mt-1">Sign in to your PGStay account</p>
               </div>
 
               <div className="space-y-4">
@@ -211,7 +211,7 @@ export default function AuthModal() {
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="text-center mb-6">
                 <h2 className="text-xl font-bold text-foreground">Create Account</h2>
-                <p className="text-sm text-muted-foreground mt-1">Join PGSpot today</p>
+                <p className="text-sm text-muted-foreground mt-1">Join PGStay today</p>
               </div>
 
               {/* Role Selection */}
