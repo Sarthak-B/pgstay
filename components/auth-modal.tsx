@@ -2,62 +2,130 @@
 
 import type React from "react"
 import { useState } from "react"
-import { X, GraduationCap, Building2, Mail, Lock, User } from "lucide-react"
+import { X, GraduationCap, Building2, Mail, Lock, User, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useAuth } from "@/components/auth-context" // Import Context
+import { useAuth } from "@/components/auth-context"
 import { useToast } from "@/hooks/use-toast"
 
-// Firebase Imports
-import { signInWithPopup } from "firebase/auth"
-import { auth, googleProvider } from "@/lib/firebase"
+// --- FIREBASE IMPORTS ---
+import { 
+  signInWithPopup, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  updateProfile 
+} from "firebase/auth"
+import { doc, setDoc, getDoc } from "firebase/firestore" 
+import { auth, googleProvider, db } from "@/lib/firebase"
 
 export default function AuthModal() {
-  // 1. Hook into Global Auth State (No props needed)
-  const { isModalOpen, closeModal, login } = useAuth()
+  const { isModalOpen, closeModal } = useAuth()
   const { toast } = useToast()
 
   const [activeTab, setActiveTab] = useState<"signin" | "register">("signin")
   const [role, setRole] = useState<"student" | "owner" | null>(null)
+  const [loading, setLoading] = useState(false)
 
   // Form states
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [name, setName] = useState("")
 
-  // 2. Return null if modal shouldn't be open
   if (!isModalOpen) return null
 
-  // 3. Handle Standard Email/Pass Login (Simulated for now)
-  const handleSubmit = (e: React.FormEvent) => {
+  // --- 1. HANDLE FORM SUBMISSION (Real Logic) ---
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    const userData = {
-      name: name || email.split("@")[0], // Fallback name
-      email: email,
-      role: role || "student"
-    }
+    setLoading(true)
 
-    login(userData) // Updates global context
-    
-    toast({
-      title: activeTab === "signin" ? "Welcome back!" : "Account created!",
-      description: `Logged in as ${userData.name}`,
-    })
-    // Note: login() in context usually closes modal, but we can ensure it here
-    closeModal()
+    try {
+      if (activeTab === "register") {
+        // --- CREATE ACCOUNT FLOW ---
+        if (!role) {
+          throw new Error("Please select if you are a Student or Owner")
+        }
+
+        // 1. Create User
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+        const user = userCredential.user
+
+        // 2. Update Name
+        await updateProfile(user, { displayName: name })
+
+        // 3. Save to DB
+        await setDoc(doc(db, "users", user.uid), {
+          uid: user.uid,
+          name: name,
+          email: email,
+          role: role,
+          createdAt: new Date().toISOString()
+        })
+
+        toast({ title: "Account Created!", description: `Welcome, ${name}!` })
+        closeModal()
+
+      } else {
+        // --- LOGIN FLOW ---
+        await signInWithEmailAndPassword(auth, email, password)
+        
+        toast({ title: "Welcome back!" })
+        closeModal()
+      }
+
+    } catch (error: any) {
+      console.error("Auth Error:", error)
+      let title = "Error"
+      let message = error.message
+
+      // --- CUSTOM ERROR MESSAGES ---
+      if (error.code === 'auth/user-not-found') {
+        title = "Account Not Found"
+        message = "No account exists with this email. Please switch to 'Create Account'."
+      } 
+      else if (error.code === 'auth/wrong-password') {
+        message = "Incorrect password. Please try again."
+      } 
+      else if (error.code === 'auth/invalid-credential') {
+        title = "Login Failed"
+        message = "Invalid email or password. If you don't have an account, please Create Account."
+      }
+      else if (error.code === 'auth/email-already-in-use') {
+        message = "This email is already registered. Please Log In."
+      }
+
+      toast({
+        title: title,
+        description: message,
+        variant: "destructive"
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // 4. Handle Google Login (Real Firebase Auth)
+  // --- 2. HANDLE GOOGLE LOGIN ---
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider)
-      // Context listener handles the state update automatically
-      closeModal()
-      
+      const user = result.user
+
+      // Check DB for existing user to save default role
+      const userDoc = await getDoc(doc(db, "users", user.uid))
+      if (!userDoc.exists()) {
+        await setDoc(doc(db, "users", user.uid), {
+          uid: user.uid,
+          name: user.displayName,
+          email: user.email,
+          role: "student", // Default role
+          photo: user.photoURL,
+          createdAt: new Date().toISOString()
+        })
+      }
+
       toast({
         title: "Signed in with Google",
         description: `Welcome, ${result.user.displayName}`,
       })
+      closeModal()
     } catch (error: any) {
       console.error(error)
       toast({
@@ -161,12 +229,13 @@ export default function AuthModal() {
                 </button>
               </div>
 
-              {/* Submit Button */}
+              {/* Submit Button (LOGIN) - FIXED: Removed disabled={!role} */}
               <Button
                 type="submit"
+                disabled={loading}
                 className="w-full rounded-full py-6 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
               >
-                Login
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Login"}
               </Button>
 
               {/* Divider */}
@@ -179,10 +248,10 @@ export default function AuthModal() {
                 </div>
               </div>
 
-              {/* Social Login (Google) */}
+              {/* Social Login */}
               <button
                 type="button"
-                onClick={handleGoogleLogin} // Connected to Firebase
+                onClick={handleGoogleLogin}
                 className="w-full flex items-center justify-center gap-3 py-3 border border-border rounded-full hover:bg-secondary transition-colors"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -317,13 +386,13 @@ export default function AuthModal() {
                 </div>
               </div>
 
-              {/* Submit Button */}
+              {/* Submit Button (REGISTER - Keeps disabled check for role) */}
               <Button
                 type="submit"
                 className="w-full rounded-full py-6 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
-                disabled={!role}
+                disabled={!role || loading}
               >
-                Create Account
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create Account"}
               </Button>
 
               <p className="text-xs text-center text-muted-foreground">
