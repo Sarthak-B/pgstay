@@ -1,7 +1,8 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
-// Your Firebase configuration
+// ✅ YOUR ACTUAL KEYS (Restored)
 const firebaseConfig = {
   apiKey: "AIzaSyAu1FCrDFGh5pBgEz11_dHWTiLwFEuU9jo",
   authDomain: "pgstay-auth.firebaseapp.com",
@@ -12,11 +13,11 @@ const firebaseConfig = {
   measurementId: "G-MW7HVY58TX"
 };
 
-// --- FIX: Singleton Pattern ---
-// Prevents reloading errors by checking if app exists first
+// Singleton Pattern (Prevents crashes)
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
+const db = getFirestore(app);
 
-export { auth, googleProvider };
+export { auth, googleProvider, db };
