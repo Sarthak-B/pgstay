@@ -4,18 +4,21 @@ import type React from "react"
 import { useState } from "react"
 import { X, GraduationCap, Building2, Mail, Lock, User, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useAuth } from "@/components/auth-context"
+import { useAuth } from "@/components/auth-context" 
 import { useToast } from "@/hooks/use-toast"
 
-// --- FIREBASE IMPORTS ---
+// --- UPDATED IMPORTS ---
+// Firebase for Auth
 import { 
   signInWithPopup, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   updateProfile 
 } from "firebase/auth"
-import { doc, setDoc, getDoc } from "firebase/firestore" 
-import { auth, googleProvider, db } from "@/lib/firebase"
+import { auth, googleProvider } from "@/lib/firebase"
+
+// Supabase for Database (Free)
+import { supabase } from "@/lib/supabase"
 
 export default function AuthModal() {
   const { isModalOpen, closeModal } = useAuth()
@@ -23,7 +26,7 @@ export default function AuthModal() {
 
   const [activeTab, setActiveTab] = useState<"signin" | "register">("signin")
   const [role, setRole] = useState<"student" | "owner" | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(false) // Added loading state
 
   // Form states
   const [email, setEmail] = useState("")
@@ -32,33 +35,33 @@ export default function AuthModal() {
 
   if (!isModalOpen) return null
 
-  // --- 1. HANDLE FORM SUBMISSION (Real Logic) ---
+  // --- 1. HANDLE FORM SUBMISSION (Supabase + Firebase Logic) ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
     try {
       if (activeTab === "register") {
-        // --- CREATE ACCOUNT FLOW ---
+        // --- REGISTER FLOW ---
         if (!role) {
           throw new Error("Please select if you are a Student or Owner")
         }
 
-        // 1. Create User
+        // 1. Create User in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, password)
         const user = userCredential.user
 
-        // 2. Update Name
+        // 2. Update Name in Firebase
         await updateProfile(user, { displayName: name })
 
-        // 3. Save to DB
-        await setDoc(doc(db, "users", user.uid), {
-          uid: user.uid,
-          name: name,
-          email: email,
-          role: role,
-          createdAt: new Date().toISOString()
-        })
+        // 3. Save Role to Supabase (Database)
+        const { error: dbError } = await supabase
+          .from('users')
+          .insert([
+            { uid: user.uid, name: name, email: email, role: role }
+          ])
+        
+        if (dbError) throw dbError
 
         toast({ title: "Account Created!", description: `Welcome, ${name}!` })
         closeModal()
@@ -66,7 +69,6 @@ export default function AuthModal() {
       } else {
         // --- LOGIN FLOW ---
         await signInWithEmailAndPassword(auth, email, password)
-        
         toast({ title: "Welcome back!" })
         closeModal()
       }
@@ -76,7 +78,7 @@ export default function AuthModal() {
       let title = "Error"
       let message = error.message
 
-      // --- CUSTOM ERROR MESSAGES ---
+      // Handle specific error codes
       if (error.code === 'auth/user-not-found') {
         title = "Account Not Found"
         message = "No account exists with this email. Please switch to 'Create Account'."
@@ -86,7 +88,7 @@ export default function AuthModal() {
       } 
       else if (error.code === 'auth/invalid-credential') {
         title = "Login Failed"
-        message = "Invalid email or password. If you don't have an account, please Create Account."
+        message = "Invalid email or password. If you are new here, please Create Account."
       }
       else if (error.code === 'auth/email-already-in-use') {
         message = "This email is already registered. Please Log In."
@@ -102,23 +104,27 @@ export default function AuthModal() {
     }
   }
 
-  // --- 2. HANDLE GOOGLE LOGIN ---
+  // --- 2. HANDLE GOOGLE LOGIN (Supabase + Firebase Logic) ---
   const handleGoogleLogin = async () => {
     try {
+      // 1. Login with Firebase
       const result = await signInWithPopup(auth, googleProvider)
       const user = result.user
 
-      // Check DB for existing user to save default role
-      const userDoc = await getDoc(doc(db, "users", user.uid))
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, "users", user.uid), {
-          uid: user.uid,
-          name: user.displayName,
-          email: user.email,
-          role: "student", // Default role
-          photo: user.photoURL,
-          createdAt: new Date().toISOString()
-        })
+      // 2. Check if user exists in Supabase
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('*')
+        .eq('uid', user.uid)
+        .single()
+      
+      // 3. If new user, create entry in Supabase with default role
+      if (!existingUser) {
+        await supabase
+          .from('users')
+          .insert([
+            { uid: user.uid, name: user.displayName, email: user.email, role: 'student' }
+          ])
       }
 
       toast({
@@ -229,11 +235,11 @@ export default function AuthModal() {
                 </button>
               </div>
 
-              {/* Submit Button (LOGIN) - FIXED: Removed disabled={!role} */}
+              {/* Submit Button */}
               <Button
                 type="submit"
-                disabled={loading}
                 className="w-full rounded-full py-6 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+                disabled={loading} // Only loading state disables login
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Login"}
               </Button>
@@ -386,7 +392,7 @@ export default function AuthModal() {
                 </div>
               </div>
 
-              {/* Submit Button (REGISTER - Keeps disabled check for role) */}
+              {/* Submit Button */}
               <Button
                 type="submit"
                 className="w-full rounded-full py-6 bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"

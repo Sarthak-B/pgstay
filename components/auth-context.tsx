@@ -2,15 +2,13 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { 
-  onAuthStateChanged, 
-  signOut 
-} from "firebase/auth"
-import { auth } from "@/lib/firebase" // Make sure this path matches your file structure
+import { onAuthStateChanged, signOut } from "firebase/auth"
+import { auth } from "@/lib/firebase" // Firebase for Auth
+import { supabase } from "@/lib/supabase" // Supabase for Database
 
 interface AuthContextType {
   isLoggedIn: boolean
-  user: any | null
+  user: any | null // Holds name, email, photo, AND role
   login: (userData: any) => void
   logout: () => void
   isModalOpen: boolean
@@ -24,43 +22,66 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true) // Helper to prevent flicker
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
-  // --- THE FIX: Listen to Firebase for session changes ---
   useEffect(() => {
-    // onAuthStateChanged automatically checks for an existing session
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    // Listen for Firebase Auth changes
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        // User found! Set state immediately.
-        setUser({
-          name: currentUser.displayName || "User",
+        // 1. Default User Object (Role starts as 'student' fallback)
+        let userData: any = {
+          uid: currentUser.uid,
           email: currentUser.email,
+          name: currentUser.displayName || "User",
           photo: currentUser.photoURL,
-          uid: currentUser.uid
-        })
+          role: "student" // Default value so buttons don't break
+        }
+
+        // 2. Fetch Real Role from Supabase Database
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('role, name')
+            .eq('uid', currentUser.uid)
+            .single()
+
+          if (data) {
+            // Overwrite with database data
+            userData.role = data.role || "student"
+            // Use the name from DB if available (user might have updated it)
+            if (data.name) userData.name = data.name 
+          }
+          
+          if (error && error.code !== 'PGRST116') {
+            // PGRST116 is "Row not found", which is fine for new users
+            console.error("Supabase fetch error:", error)
+          }
+
+        } catch (error) {
+          console.error("Error connecting to Supabase:", error)
+        }
+
+        setUser(userData)
+        setIsModalOpen(false)
       } else {
-        // No user found
         setUser(null)
       }
-      setIsLoading(false) // Done checking
+      setIsLoading(false)
     })
 
     return () => unsubscribe()
   }, [])
 
   const logout = async () => {
-    await signOut(auth) // Tell Firebase to delete session
+    await signOut(auth) // Sign out from Firebase
     setUser(null)
     router.push("/")
   }
 
-  // Helper for manual/dummy login (keeps compatibility)
-  const login = (userData: any) => {
-    setUser(userData)
-    setIsModalOpen(false)
-  }
-
+  // Manual login helper (used rarely now since Firebase handles it)
+  const login = (userData: any) => { setUser(userData); setIsModalOpen(false) }
+  
   const openModal = () => setIsModalOpen(true)
   const closeModal = () => setIsModalOpen(false)
 
@@ -85,7 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         protectedAction 
       }}
     >
-      {/* Don't show the app until we know if the user is logged in */}
       {!isLoading && children}
     </AuthContext.Provider>
   )
