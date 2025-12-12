@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 // Import the provider
 import { AuthProvider } from "@/components/auth-context"; 
+import { platform } from "os";
 
 const inter = Inter({ subsets: ["latin"] });
 
